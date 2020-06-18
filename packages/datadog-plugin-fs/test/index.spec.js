@@ -622,7 +622,7 @@ describe('Plugin', () => {
 
         it('should handle errors', () => {
           testHandleErrors(fs, 'ReadStream', (fs, args, _, cb) => {
-            fs.createReadStream(...args).on('error', cb).emit('error', new Error('bad'))
+            fs.createReadStream(...args).on('error', cb)
           }, [__filename], agent)
         })
       })

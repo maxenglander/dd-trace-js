@@ -2,6 +2,7 @@
 
 const dgram = require('dgram')
 const lookup = require('dns').lookup // cache to avoid instrumentation
+const net = require('net')
 const log = require('../../log')
 
 const MAX_BUFFER_SIZE = 1024 // limit from the agent
@@ -10,8 +11,10 @@ class Client {
   constructor (options) {
     options = options || {}
 
-    this._host = options.host || 'localhost'
-    this._port = options.port || 8125
+    this._url = options.url || null;
+    this._host = this._url ? this._url.hostname : (options.host || 'localhost')
+    this._port = this._url ? this._url.port : (options.port || 8125)
+    this._socketPath = this._url && this._url.protocol === 'unix:' && this._url.pathname
     this._prefix = options.prefix || ''
     this._tags = options.tags || []
     this._queue = []
@@ -19,6 +22,7 @@ class Client {
     this._offset = 0
     this._udp4 = this._socket('udp4')
     this._udp6 = this._socket('udp6')
+    this._uds = this._socketPath && this._socket('uds')
   }
 
   gauge (stat, value, tags) {
@@ -36,19 +40,26 @@ class Client {
 
     this._queue = []
 
-    lookup(this._host, (err, address, family) => {
-      if (err === null) {
-        queue.forEach(buffer => this._send(address, family, buffer))
-      }
-    })
+    if (this._socketPath) {
+      queue.forEach(buffer => this._send(null, 'unix', buffer))
+    } else {
+      lookup(this._host, (err, address, family) => {
+        if (err === null) {
+          queue.forEach(buffer => this._send(address, family, buffer))
+        }
+      })
+    }
   }
 
   _send (address, family, buffer) {
-    const socket = family === 6 ? this._udp6 : this._udp4
-
     log.debug(`Sending to DogStatsD: ${buffer}`)
 
-    socket.send(buffer, 0, buffer.length, this._port, address)
+    if (family === 'unix') {
+      this._uds.write(buffer)
+    } else {
+      const socket = family === 6 ? this._udp6 : this._udp4
+      socket.send(buffer, 0, buffer.length, this._port, address)
+    }
   }
 
   _add (stat, value, type, tags) {
@@ -84,8 +95,14 @@ class Client {
     return this._queue
   }
 
-  _socket (type) {
-    const socket = dgram.createSocket(type)
+  _socket (type, path) {
+    let socket;
+
+    if (type === 'uds') {
+      socket = net.createConnection(this._socketPath)
+    } else {
+      socket = dgram.createSocket(type)
+    }
 
     socket.on('error', () => {})
     socket.unref()

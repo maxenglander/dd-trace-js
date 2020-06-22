@@ -40,6 +40,7 @@ class Config {
     const flushInterval = coalesce(parseInt(options.flushInterval, 10), 2000)
     const plugins = coalesce(options.plugins, true)
     const dogstatsd = options.dogstatsd || {}
+    const dogstatsdUrl = coalesce(dogstatsd.url, platform.env('DD_DOGSTATSD_URL'), null)
     const runtimeMetrics = coalesce(options.runtimeMetrics, platform.env('DD_RUNTIME_METRICS_ENABLED'), false)
     const analytics = coalesce(
       options.analytics,
@@ -81,7 +82,8 @@ class Config {
     this.analytics = String(analytics) === 'true'
     this.tags = tags
     this.dogstatsd = {
-      port: String(coalesce(dogstatsd.port, platform.env('DD_DOGSTATSD_PORT'), 8125))
+      port: String(coalesce(dogstatsd.port, platform.env('DD_DOGSTATSD_PORT'), 8125)),
+      url: dogstatsdUrl && new URL(dogstatsdUrl)
     }
     this.runtimeMetrics = String(runtimeMetrics) === 'true'
     this.trackAsyncScope = options.trackAsyncScope !== false

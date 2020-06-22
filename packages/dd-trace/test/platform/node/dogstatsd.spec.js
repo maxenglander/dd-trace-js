@@ -1,5 +1,7 @@
 'use strict'
 
+const URL = require('url-parse')
+
 wrapIt()
 
 describe('Platform', () => {
@@ -10,7 +12,9 @@ describe('Platform', () => {
       let dgram
       let udp4
       let udp6
+      let uds
       let dns
+      let net
 
       beforeEach(() => {
         udp6 = {
@@ -23,6 +27,12 @@ describe('Platform', () => {
           send: sinon.spy(),
           on: sinon.stub().returns(udp4),
           unref: sinon.stub().returns(udp4)
+        }
+
+        uds = {
+          write: sinon.spy(),
+          on: sinon.stub().returns(uds),
+          unref: sinon.stub().returns(uds)
         }
 
         dgram = {
@@ -51,9 +61,17 @@ describe('Platform', () => {
           callback(null, hostname, 6)
         })
 
+        net = {
+          createConnection: sinon.stub()
+        }
+
+        net.createConnection.withArgs('/var/run/datadog/dsd.sock').returns(uds)
+        net.createConnection.throwsArg(0)
+
         Client = proxyquire('../src/platform/node/dogstatsd', {
           'dgram': dgram,
-          'dns': dns
+          'dns': dns,
+          'net': net
         })
       })
 
@@ -157,6 +175,24 @@ describe('Platform', () => {
         expect(udp6.send.firstCall.args[2]).to.equal(37)
         expect(udp6.send.firstCall.args[3]).to.equal(7777)
         expect(udp6.send.firstCall.args[4]).to.equal('::1')
+      })
+
+      it('should support unix domain sockets', () => {
+        client = new Client({
+          host: '::1',
+          port: 7777,
+          url: new URL('unix:/var/run/datadog/dsd.sock'),
+          tags: ['foo:bar']
+        })
+
+        client.gauge('test.avg', 1, ['baz:qux'])
+        client.flush()
+
+        expect(dns.lookup).to.not.have.been.called
+        expect(udp4.send).to.not.have.been.called
+        expect(udp6.send).to.not.have.been.called
+        expect(uds.write.firstCall.args.length).to.equal(1)
+        expect(uds.write.firstCall.args[0].toString()).to.equal('test.avg:1|g|#foo:bar,baz:qux\n')
       })
     })
   })

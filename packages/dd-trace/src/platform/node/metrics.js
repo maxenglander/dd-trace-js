@@ -51,7 +51,8 @@ module.exports = function () {
       client = new Client({
         host: this._config.hostname,
         port: this._config.dogstatsd.port,
-        tags
+        tags,
+        url: this._config.dogstatsd.url
       })
 
       time = process.hrtime()
